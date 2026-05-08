@@ -318,8 +318,8 @@ function classify(subject, from) {
 
   const invoiceWords = [
     'חשבונית', 'invoice', 'tax invoice', 'חשבון עסקה', 'חשבון לתשלום',
-    'חיוב חודשי', 'הוראת קבע', 'חשבון תקופתי', 'billing', 'bill',
-    'פרטי חיוב', 'לתשלום', 'חשבון חודשי'
+    'חיוב חודשי', 'הוראת קבע', 'חשבון תקופתי', 'חשבון חודשי',
+    'פרטי חיוב', 'חשבון לחודש', 'חשבון מס'
   ];
   const receiptWords = [
     'קבלה', 'receipt', 'אישור תשלום', 'אישור רכישה', 'תשלום התקבל',
@@ -346,7 +346,7 @@ function classify(subject, from) {
     if (text.includes(w.toLowerCase())) return { isInvoice: true, type: 'קבלה', confidence: 87 };
   }
   // Only match supplier domains if subject also contains money/billing words
-  const moneyWords = ['₪', 'nis', 'שקל', 'תשלום', 'חיוב', 'חשבון', 'invoice', 'חשבונית', 'קבלה', 'bill'];
+  const moneyWords = ['₪', 'nis', 'שקל', 'תשלום', 'חיוב חודשי', 'invoice', 'חשבונית', 'קבלה', 'חשבון לתשלום', 'חשבון חודשי'];
   const hasMoney = moneyWords.some(w => text.includes(w));
   if (hasMoney) {
     for (const w of supplierDomains) {
