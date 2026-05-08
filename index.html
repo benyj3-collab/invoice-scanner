@@ -298,6 +298,7 @@ async function processEmail(msgId) {
   const date = dateHeader ? dateHeader.value : '';
 
   console.log('SUBJECT:', subject, '| FROM:', from);
+  log('בודק: ' + (subject || '(ריק)').substring(0, 40), '');
   const classification = classify(subject, from);
   console.log('RESULT:', classification.isInvoice, classification.type);
 
