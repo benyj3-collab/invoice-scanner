@@ -345,11 +345,16 @@ function classify(subject, from) {
   for (const w of receiptWords) {
     if (text.includes(w.toLowerCase())) return { isInvoice: true, type: 'קבלה', confidence: 87 };
   }
-  for (const w of supplierDomains) {
-    if (text.includes(w.toLowerCase())) return { isInvoice: true, type: 'חשבונית', confidence: 72 };
-  }
-  for (const w of supplierNames) {
-    if (text.includes(w.toLowerCase())) return { isInvoice: true, type: 'חשבונית', confidence: 68 };
+  // Only match supplier domains if subject also contains money/billing words
+  const moneyWords = ['₪', 'nis', 'שקל', 'תשלום', 'חיוב', 'חשבון', 'invoice', 'חשבונית', 'קבלה', 'bill'];
+  const hasMoney = moneyWords.some(w => text.includes(w));
+  if (hasMoney) {
+    for (const w of supplierDomains) {
+      if (text.includes(w.toLowerCase())) return { isInvoice: true, type: 'חשבונית', confidence: 75 };
+    }
+    for (const w of supplierNames) {
+      if (text.includes(w.toLowerCase())) return { isInvoice: true, type: 'חשבונית', confidence: 75 };
+    }
   }
   return { isInvoice: false, type: 'לא רלוונטי', confidence: 0 };
 }
