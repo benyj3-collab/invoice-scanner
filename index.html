@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>סורק חשבוניות AI</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&display=swap');
+
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #22263a;
+    --accent: #4f8ef7;
+    --accent2: #7c3aed;
+    --success: #10b981;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+    --text: #e8eaf0;
+    --text-dim: #8b90a7;
+    --border: #2e3350;
+    --radius: 14px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Heebo', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    direction: rtl;
+  }
+
+  /* Header */
+  .header {
+    background: linear-gradient(135deg, #1a1d27 0%, #12152a 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 18px 24px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    backdrop-filter: blur(10px);
+  }
+
+  .header-icon {
+    width: 42px; height: 42px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px;
+  }
+
+  .header h1 { font-size: 20px; font-weight: 700; }
+  .header p { font-size: 12px; color: var(--text-dim); margin-top: 1px; }
+
+  .header-status {
+    margin-right: auto;
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+
+  .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--text-dim);
+  }
+  .dot.connected { background: var(--success); box-shadow: 0 0 6px var(--success); }
+
+  /* Main */
+  .main { max-width: 900px; margin: 0 auto; padding: 28px 20px; }
+
+  /* Card */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin-bottom: 20px;
+  }
+
+  .card-title {
+    font-size: 15px; font-weight: 700;
+    margin-bottom: 18px;
+    display: flex; align-items: center; gap: 8px;
+    color: var(--text);
+  }
+
+  .card-title span { font-size: 18px; }
+
+  /* Connect button */
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 11px 22px;
+    border-radius: 10px;
+    font-family: 'Heebo', sans-serif;
+    font-size: 14px; font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s;
+  }
+
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent), #3b6fd4);
+    color: white;
+  }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 20px rgba(79,142,247,0.35); }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+  .btn-success {
+    background: linear-gradient(135deg, var(--success), #059669);
+    color: white;
+  }
+  .btn-success:hover { transform: translateY(-1px); box-shadow: 0 4px 20px rgba(16,185,129,0.35); }
+  .btn-success:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+  .btn-outline {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+  .btn-outline:hover { background: var(--surface2); }
+
+  .btn-sm { padding: 7px 14px; font-size: 13px; }
+
+  /* Google button */
+  .btn-google {
+    background: white;
+    color: #3c4043;
+    border: 1px solid #dadce0;
+    font-weight: 500;
+    width: 100%;
+    justify-content: center;
+    padding: 13px;
+    font-size: 15px;
+  }
+  .btn-google:hover { background: #f8f9fa; box-shadow: 0 2px 10px rgba(0,0,0,0.3); }
+
+  /* Date inputs */
+  .date-row {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+    margin-bottom: 16px;
+  }
+
+  .field label {
+    display: block;
+    font-size: 12px; font-weight: 600;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+
+  .field input {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    color: var(--text);
+    font-family: 'Heebo', sans-serif;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+    direction: ltr;
+  }
+  .field input:focus { border-color: var(--accent); }
+
+  /* Progress */
+  .progress-wrap {
+    background: var(--surface2);
+    border-radius: 100px;
+    height: 6px;
+    margin: 14px 0;
+    overflow: hidden;
+  }
+  .progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    border-radius: 100px;
+    width: 0%;
+    transition: width 0.4s ease;
+  }
+
+  .progress-text {
+    font-size: 13px; color: var(--text-dim);
+    text-align: center;
+    margin-bottom: 8px;
+  }
+
+  /* Stats row */
+  .stats-row {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;
+    margin-bottom: 20px;
+  }
+
+  .stat-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    text-align: center;
+  }
+
+  .stat-num {
+    font-size: 28px; font-weight: 900;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+
+  .stat-label { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+
+  /* Table */
+  .table-wrap { overflow-x: auto; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  thead th {
+    background: var(--surface2);
+    padding: 11px 14px;
+    text-align: right;
+    font-weight: 700;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-dim);
+    border-bottom: 1px solid var(--border);
+  }
+
+  tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.15s;
+  }
+  tbody tr:hover { background: var(--surface2); }
+
+  tbody td {
+    padding: 12px 14px;
+    vertical-align: middle;
+  }
+
+  .badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 9px;
+    border-radius: 100px;
+    font-size: 11px; font-weight: 600;
+  }
+
+  .badge-invoice { background: rgba(79,142,247,0.15); color: var(--accent); }
+  .badge-receipt { background: rgba(124,58,237,0.15); color: #a78bfa; }
+  .badge-unknown { background: rgba(139,144,167,0.15); color: var(--text-dim); }
+
+  .confidence {
+    font-size: 11px; color: var(--text-dim);
+    margin-top: 2px;
+  }
+
+  /* Log */
+  .log-box {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+    height: 160px;
+    overflow-y: auto;
+    font-size: 12px;
+    font-family: 'Courier New', monospace;
+    direction: ltr;
+  }
+
+  .log-line { padding: 2px 0; color: var(--text-dim); }
+  .log-line.info { color: var(--accent); }
+  .log-line.success { color: var(--success); }
+  .log-line.warn { color: var(--warning); }
+  .log-line.error { color: var(--danger); }
+
+  /* Hidden */
+  .hidden { display: none !important; }
+
+  /* Alert */
+  .alert {
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    margin-bottom: 14px;
+    display: flex; align-items: flex-start; gap: 8px;
+  }
+  .alert-info { background: rgba(79,142,247,0.1); border: 1px solid rgba(79,142,247,0.3); color: #93c5fd; }
+  .alert-warn { background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.3); color: #fcd34d; }
+
+  /* Export row */
+  .action-row {
+    display: flex; gap: 10px; flex-wrap: wrap;
+    margin-top: 16px;
+  }
+
+  /* Divider */
+  .divider {
+    border: none; border-top: 1px solid var(--border);
+    margin: 18px 0;
+  }
+
+  /* Spinner */
+  .spinner {
+    width: 16px; height: 16px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    display: inline-block;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  @media (max-width: 600px) {
+    .date-row { grid-template-columns: 1fr; }
+    .stats-row { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-icon">📧</div>
+  <div>
+    <h1>סורק חשבוניות AI</h1>
+    <p>זיהוי אוטומטי מ-Gmail</p>
+  </div>
+  <div class="header-status">
+    <div class="dot" id="statusDot"></div>
+    <span id="statusText">לא מחובר</span>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- Step 1: Connect -->
+  <div class="card" id="connectCard">
+    <div class="card-title"><span>🔐</span> חיבור ל-Gmail</div>
+    <div class="alert alert-info">
+      <span>ℹ️</span>
+      <div>האפליקציה תבקש הרשאה לקרוא את המיילים שלך בלבד. לא נשמר שום מידע על שרת חיצוני.</div>
+    </div>
+    <button class="btn btn-google" onclick="connectGmail()">
+      <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/><path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957C.347 6.175 0 7.55 0 9s.348 2.825.957 4.039l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.961L3.964 7.293C4.672 5.163 6.656 3.58 9 3.58z"/></svg>
+      התחבר עם Google
+    </button>
+  </div>
+
+  <!-- Step 2: Scan (hidden until connected) -->
+  <div id="scanSection" class="hidden">
+
+    <div class="card">
+      <div class="card-title"><span>📅</span> הגדרת סריקה</div>
+      <div class="date-row">
+        <div class="field">
+          <label>מתאריך</label>
+          <input type="date" id="dateFrom">
+        </div>
+        <div class="field">
+          <label>עד תאריך</label>
+          <input type="date" id="dateTo">
+        </div>
+      </div>
+      <div class="alert alert-warn">
+        <span>⚠️</span>
+        <div>טווח של יותר מ-3 חודשים עלול לקחת זמן רב. מומלץ לסרוק חודש-חודשיים בכל פעם.</div>
+      </div>
+      <button class="btn btn-success" id="scanBtn" onclick="startScan()">
+        <span>🔍</span> התחל סריקה
+      </button>
+    </div>
+
+    <!-- Progress -->
+    <div class="card hidden" id="progressCard">
+      <div class="card-title"><span>⚡</span> סריקה בתהליך</div>
+      <div class="progress-text" id="progressText">מתחיל...</div>
+      <div class="progress-wrap">
+        <div class="progress-bar" id="progressBar"></div>
+      </div>
+      <div class="log-box" id="logBox"></div>
+    </div>
+
+    <!-- Results -->
+    <div class="hidden" id="resultsSection">
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="stat-num" id="statTotal">0</div>
+          <div class="stat-label">מיילים נסרקו</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num" id="statFound">0</div>
+          <div class="stat-label">חשבוניות זוהו</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num" id="statLabeled">0</div>
+          <div class="stat-label">תויגו ב-Gmail</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title"><span>📋</span> תוצאות</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>תאריך</th>
+                <th>שולח</th>
+                <th>נושא</th>
+                <th>סוג</th>
+                <th>פעולה</th>
+              </tr>
+            </thead>
+            <tbody id="resultsTable"></tbody>
+          </table>
+        </div>
+        <div class="action-row">
+          <button class="btn btn-primary" onclick="exportExcel()">
+            <span>📊</span> ייצוא לאקסל
+          </button>
+          <button class="btn btn-outline" onclick="resetScan()">
+            <span>🔄</span> סריקה חדשה
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ============================================================
+// CONFIG
+// ============================================================
+const CLIENT_ID = '353675408500-js28iveo2pgb34jc8sa5s291gpkgc5c8.apps.googleusercontent.com';
+const SCOPES = 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.labels https://www.googleapis.com/auth/gmail.modify';
+const LABEL_NAME = 'חשבוניות AI';
+
+let tokenClient;
+let accessToken = null;
+let labelId = null;
+let results = [];
+let totalScanned = 0;
+let foundCount = 0;
+let labeledCount = 0;
+
+// ============================================================
+// GOOGLE IDENTITY SERVICES
+// ============================================================
+function loadGIS() {
+  const script = document.createElement('script');
+  script.src = 'https://accounts.google.com/gsi/client';
+  script.onload = initGIS;
+  document.head.appendChild(script);
+}
+
+function initGIS() {
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope: SCOPES,
+    callback: (resp) => {
+      if (resp.error) { log('שגיאת חיבור: ' + resp.error, 'error'); return; }
+      accessToken = resp.access_token;
+      onConnected();
+    }
+  });
+}
+
+function connectGmail() {
+  if (!tokenClient) { alert('טוען... נסה שוב'); return; }
+  tokenClient.requestAccessToken();
+}
+
+function onConnected() {
+  document.getElementById('statusDot').classList.add('connected');
+  document.getElementById('statusText').textContent = 'מחובר';
+  document.getElementById('connectCard').classList.add('hidden');
+  document.getElementById('scanSection').classList.remove('hidden');
+
+  // Set default dates (last month)
+  const today = new Date();
+  const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+  const endLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
+  document.getElementById('dateFrom').value = lastMonth.toISOString().split('T')[0];
+  document.getElementById('dateTo').value = endLastMonth.toISOString().split('T')[0];
+
+  log('✅ מחובר בהצלחה ל-Gmail', 'success');
+}
+
+// ============================================================
+// GMAIL API
+// ============================================================
+async function gmailGet(path, params = {}) {
+  const url = new URL('https://gmail.googleapis.com/gmail/v1/' + path);
+  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+  const res = await fetch(url, {
+    headers: { Authorization: 'Bearer ' + accessToken }
+  });
+  if (!res.ok) throw new Error('Gmail API error: ' + res.status);
+  return res.json();
+}
+
+async function gmailPost(path, body) {
+  const res = await fetch('https://gmail.googleapis.com/gmail/v1/' + path, {
+    method: 'POST',
+    headers: {
+      Authorization: 'Bearer ' + accessToken,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) throw new Error('Gmail API error: ' + res.status);
+  return res.json();
+}
+
+// ============================================================
+// LABEL
+// ============================================================
+async function getOrCreateLabel() {
+  const data = await gmailGet('users/me/labels');
+  const existing = data.labels.find(l => l.name === LABEL_NAME);
+  if (existing) { labelId = existing.id; return; }
+
+  const created = await gmailPost('users/me/labels', {
+    name: LABEL_NAME,
+    labelListVisibility: 'labelShow',
+    messageListVisibility: 'show'
+  });
+  labelId = created.id;
+  log('✅ נוצרה תווית "' + LABEL_NAME + '" ב-Gmail', 'success');
+}
+
+async function applyLabel(msgId) {
+  await gmailPost('users/me/messages/' + msgId + '/modify', {
+    addLabelIds: [labelId]
+  });
+}
+
+// ============================================================
+// SCAN
+// ============================================================
+async function startScan() {
+  const dateFrom = document.getElementById('dateFrom').value;
+  const dateTo = document.getElementById('dateTo').value;
+  if (!dateFrom || !dateTo) { alert('נא לבחור תאריכים'); return; }
+
+  results = [];
+  totalScanned = 0;
+  foundCount = 0;
+  labeledCount = 0;
+
+  document.getElementById('progressCard').classList.remove('hidden');
+  document.getElementById('resultsSection').classList.add('hidden');
+  document.getElementById('scanBtn').disabled = true;
+  document.getElementById('resultsTable').innerHTML = '';
+
+  try {
+    await getOrCreateLabel();
+    await scanEmails(dateFrom, dateTo);
+  } catch(e) {
+    log('שגיאה: ' + e.message, 'error');
+  } finally {
+    document.getElementById('scanBtn').disabled = false;
+  }
+}
+
+async function scanEmails(dateFrom, dateTo) {
+  const from = Math.floor(new Date(dateFrom).getTime() / 1000);
+  const to = Math.floor(new Date(dateTo + 'T23:59:59').getTime() / 1000);
+  const query = `after:${from} before:${to}`;
+
+  log(`🔍 מחפש מיילים מ-${dateFrom} עד ${dateTo}...`, 'info');
+
+  let pageToken = null;
+  let allIds = [];
+
+  do {
+    const params = { q: query, maxResults: 100 };
+    if (pageToken) params.pageToken = pageToken;
+    const data = await gmailGet('users/me/messages', params);
+    if (data.messages) allIds = allIds.concat(data.messages.map(m => m.id));
+    pageToken = data.nextPageToken || null;
+  } while (pageToken);
+
+  if (allIds.length === 0) {
+    log('לא נמצאו מיילים בטווח הנבחר', 'warn');
+    showResults();
+    return;
+  }
+
+  log(`📬 נמצאו ${allIds.length} מיילים. מנתח...`, 'info');
+
+  for (let i = 0; i < allIds.length; i++) {
+    const pct = Math.round(((i + 1) / allIds.length) * 100);
+    setProgress(pct, `מנתח מייל ${i + 1} מתוך ${allIds.length}`);
+
+    try {
+      await processEmail(allIds[i]);
+    } catch(e) {
+      // skip
+    }
+
+    totalScanned++;
+    // Small delay to avoid rate limit
+    if (i % 10 === 9) await sleep(300);
+  }
+
+  showResults();
+}
+
+async function processEmail(msgId) {
+  const msg = await gmailGet('users/me/messages/' + msgId, { format: 'metadata', metadataHeaders: 'Subject,From,Date' });
+
+  const headers = msg.payload?.headers || [];
+  const subject = headers.find(h => h.name === 'Subject')?.value || '';
+  const from = headers.find(h => h.name === 'From')?.value || '';
+  const date = headers.find(h => h.name === 'Date')?.value || '';
+
+  // Quick keyword check first (fast, no AI)
+  const isKeywordMatch = checkKeywords(subject, from);
+  const hasPDF = checkHasPDF(msg.payload);
+
+  if (!isKeywordMatch && !hasPDF) return; // Skip non-matches
+
+  // Use AI to classify
+  const classification = await classifyWithAI(subject, from);
+
+  if (classification.isInvoice) {
+    foundCount++;
+    results.push({
+      id: msgId,
+      date: formatDate(date),
+      from: cleanFrom(from),
+      subject: subject,
+      type: classification.type,
+      confidence: classification.confidence
+    });
+
+    await applyLabel(msgId);
+    labeledCount++;
+
+    log(`✅ חשבונית: ${subject.substring(0, 50)}`, 'success');
+    updateStats();
+    addResultRow(results[results.length - 1]);
+  }
+}
+
+function checkKeywords(subject, from) {
+  const keywords = [
+    'חשבונית', 'קבלה', 'invoice', 'receipt', 'חשבון',
+    'לתשלום', 'אישור תשלום', 'פרטי תשלום', 'tax invoice',
+    'billing', 'חיוב', 'הוראת קבע'
+  ];
+  const text = (subject + ' ' + from).toLowerCase();
+  return keywords.some(k => text.includes(k.toLowerCase()));
+}
+
+function checkHasPDF(payload) {
+  if (!payload) return false;
+  const parts = payload.parts || [];
+  return parts.some(p =>
+    p.mimeType === 'application/pdf' ||
+    (p.filename && p.filename.toLowerCase().endsWith('.pdf'))
+  );
+}
+
+// ============================================================
+// AI CLASSIFICATION
+// ============================================================
+async function classifyWithAI(subject, from) {
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 150,
+        system: 'You are an invoice classifier. Respond ONLY with valid JSON, no markdown, no explanation.',
+        messages: [{
+          role: 'user',
+          content: `Classify this email. Is it an invoice or receipt?
+Subject: ${subject}
+From: ${from}
+
+Respond with JSON only:
+{"isInvoice": true/false, "type": "חשבונית"/"קבלה"/"לא רלוונטי", "confidence": 0-100}`
+        }]
+      })
+    });
+
+    const data = await res.json();
+    const text = data.content?.[0]?.text || '{}';
+    const clean = text.replace(/```json|```/g, '').trim();
+    return JSON.parse(clean);
+  } catch(e) {
+    // Fallback to keyword-based
+    const isInv = checkKeywords(subject, from);
+    return { isInvoice: isInv, type: isInv ? 'חשבונית' : 'לא רלוונטי', confidence: 60 };
+  }
+}
+
+// ============================================================
+// UI HELPERS
+// ============================================================
+function log(msg, type = '') {
+  const box = document.getElementById('logBox');
+  const line = document.createElement('div');
+  line.className = 'log-line ' + type;
+  const time = new Date().toLocaleTimeString('he-IL');
+  line.textContent = `[${time}] ${msg}`;
+  box.appendChild(line);
+  box.scrollTop = box.scrollHeight;
+}
+
+function setProgress(pct, text) {
+  document.getElementById('progressBar').style.width = pct + '%';
+  document.getElementById('progressText').textContent = text;
+}
+
+function updateStats() {
+  document.getElementById('statTotal').textContent = totalScanned;
+  document.getElementById('statFound').textContent = foundCount;
+  document.getElementById('statLabeled').textContent = labeledCount;
+}
+
+function addResultRow(r) {
+  document.getElementById('resultsSection').classList.remove('hidden');
+  updateStats();
+
+  const tb = document.getElementById('resultsTable');
+  const tr = document.createElement('tr');
+
+  const badgeClass = r.type === 'חשבונית' ? 'badge-invoice' : r.type === 'קבלה' ? 'badge-receipt' : 'badge-unknown';
+
+  tr.innerHTML = `
+    <td>${r.date}</td>
+    <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.from}</td>
+    <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.subject}</td>
+    <td>
+      <span class="badge ${badgeClass}">${r.type}</span>
+      <div class="confidence">${r.confidence}% ביטחון</div>
+    </td>
+    <td>
+      <a href="https://mail.google.com/mail/u/0/#inbox/${r.id}" target="_blank" class="btn btn-outline btn-sm">פתח</a>
+    </td>
+  `;
+  tb.appendChild(tr);
+}
+
+function showResults() {
+  setProgress(100, `סריקה הושלמה — ${totalScanned} מיילים, ${foundCount} חשבוניות`);
+  updateStats();
+  if (foundCount === 0) {
+    log('לא נמצאו חשבוניות בטווח הנבחר', 'warn');
+  } else {
+    log(`🎉 סריקה הסתיימה! נמצאו ${foundCount} חשבוניות ותויגו ב-Gmail`, 'success');
+  }
+}
+
+function resetScan() {
+  document.getElementById('progressCard').classList.add('hidden');
+  document.getElementById('resultsSection').classList.add('hidden');
+  document.getElementById('logBox').innerHTML = '';
+  setProgress(0, '');
+  results = [];
+}
+
+function cleanFrom(from) {
+  const m = from.match(/^([^<]+)/);
+  return m ? m[1].trim().replace(/"/g, '') : from;
+}
+
+function formatDate(dateStr) {
+  try {
+    return new Date(dateStr).toLocaleDateString('he-IL');
+  } catch { return dateStr; }
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ============================================================
+// EXPORT EXCEL
+// ============================================================
+function exportExcel() {
+  if (results.length === 0) { alert('אין תוצאות לייצוא'); return; }
+
+  const rows = [['תאריך', 'שולח', 'נושא', 'סוג', 'ביטחון %', 'קישור']];
+  results.forEach(r => {
+    rows.push([
+      r.date, r.from, r.subject, r.type, r.confidence,
+      `https://mail.google.com/mail/u/0/#inbox/${r.id}`
+    ]);
+  });
+
+  // Build CSV (Excel-compatible with BOM for Hebrew)
+  const bom = '\uFEFF';
+  const csv = bom + rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `חשבוניות_${new Date().toISOString().split('T')[0]}.csv`;
+  a.click();
+}
+
+// ============================================================
+// INIT
+// ============================================================
+loadGIS();
+</script>
+</body>
+</html>
