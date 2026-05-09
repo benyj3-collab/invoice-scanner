@@ -336,6 +336,440 @@ function isInvoice(subject, from) {
     'דמי מנוי','חיוב שנתי','חיוב חד פעמי','תשלום חודשי','תשלום שנתי',
     'חשבונית מס','מסמך מס','קבלה','receipt','אישור תשלום','אישור רכישה',
     'תשלום התקבל','payment received','order confirmation','אישור עסקה','אישור הזמנה'];
+  if(!kw.some(k=>text.includes(k))) return false;
+
+  // רשימת שולחים/דומיינים שאינם חשבוניות
+  const blacklist = [
+    'github.com', 'github.io', 'noreply@github', 'notifications@github',
+    'render.com', 'noreply@render', 'renderteam',
+    'linkedin.com', 'facebook.com', 'twitter.com', 'instagram.com',
+    'youtube.com', 'google-analytics', 'googlealerts',
+    'calendar-notification', 'calendar.google',
+    'no-reply@accounts.google', 'alerts@google',
+    'medium.com', 'substack.com', 'mailchimp',
+    'deploy', 'deployment', 'build failed', 'build success',
+    'ci/cd', 'pipeline', 'vercel.com', 'netlify.com', 'heroku.com'
+  ];
+  const fullText = (subject + ' ' + from).toLowerCase();
+  if(blacklist.some(b=>fullText.includes(b))) return false;
+
+  return true;
+}
+
+function findAttachments(payload) {
+  const atts=[];
+  function traverse(part){
+    if(!part) return;
+    if(part.filename&&part.body&&part.body.attachmentId)
+      atts.push({filename:part.filename,attachmentId:part.body.attachmentId,mimeType:part.mimeType||''});
+    if(part.parts) part.parts.forEach(traverse);
+  }
+  traverse(payload);
+  return atts;
+}
+function isPDF(att){return att.mimeType==='application/pdf'||(att.filename&&att.filename.toLowerCase().endsWith('.pdf'));}
+function getBody(payload){
+  function find(part){
+    if(!part) return null;
+    if(part.mimeType==='text/html'&&part.body&&part.body.data){
+      try{return decodeURIComponent(escape(atob(part.body.data.replace(/-/g,'+').replace(/_/g,'/'))));}catch(e){return null;}
+    }
+    if(part.parts){for(const p of part.parts){const r=find(p);if(r)return r;}}
+    return null;
+  }
+  return find(payload);
+}
+function sanitize(from,subject,date){
+  const d=formatDate(date).replace(/\./g,'-');
+  const s=subject.replace(/[^\u0590-\u05FFa-zA-Z0-9]/g,'_').substring(0,25);
+  const f=cleanFrom(from).replace(/[^\u0590-\u05FFa-zA-Z0-9]/g,'_').substring(0,15);
+  return d+'_'+f+'_'+s;
+}
+function cleanFrom(from){const m=from.match(/^([^<]+)/);return m?m[1].trim().replace(/"/g,''):from;}
+function formatDate(dateStr){try{return new Date(dateStr).toLocaleDateString('he-IL');}catch{return dateStr;}}
+function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+
+async function downloadZip() {
+  if(pdfFiles.length===0){alert('אין קבצים');return;}
+  log('יוצר ZIP...','info');
+  try {
+    const zip=new JSZip();
+    const folder=zip.folder('חשבוניות');
+    for(const f of pdfFiles){
+      const b64=f.data.replace(/\s/g,'');
+      const bin=atob(b64);
+      const bytes=new Uint8Array(bin.length);
+      for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+      folder.file(f.name,bytes,{binary:true});
+    }
+    const blob=await zip.generateAsync({type:'blob'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url; a.download='חשבוניות_'+new Date().toISOString().split('T')[0]+'.zip'; a.click();
+    log('✅ ZIP הורד! '+pdfFiles.length+' קבצים','success');
+  }catch(e){log('שגיאה: '+e.message,'error');}
+}
+
+function log(msg,type){
+  const box=document.getElementById('logBox');
+  const line=document.createElement('div');
+  line.className='log-line'+(type?' '+type:'');
+  line.textContent='['+new Date().toLocaleTimeString('he-IL')+'] '+msg;
+  box.appendChild(line); box.scrollTop=box.scrollHeight;
+}
+function setProgress(pct,text){
+  document.getElementById('progressBar').style.width=pct+'%';
+  document.getElementById('progressText').textContent=text;
+}
+function updateStats(){
+  document.getElementById('statTotal').textContent=totalScanned;
+  document.getElementById('statFound').textContent=foundCount;
+  document.getElementById('statPdf').textContent=pdfCount;
+  document.getElementById('statLabeled').textContent=labeledCount;
+}
+function addResultRow(r){
+  document.getElementById('resultsSection').classList.remove('hidden');
+  updateStats();
+  const tb=document.getElementById('resultsTable');
+  const tr=document.createElement('tr');
+  const bc=r.fileType==='PDF'?'badge-pdf':'badge-html';
+  const status=r.fileData?'<span class="badge badge-ok">✓ הורד</span>':'<span style="color:var(--text-dim);font-size:11px">ללא קובץ</span>';
+  tr.innerHTML=
+    '<td>'+r.date+'</td>'+
+    '<td style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+r.from+'</td>'+
+    '<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+r.subject+'</td>'+
+    '<td><span class="badge '+bc+'">'+r.fileType+'</span></td>'+
+    '<td>'+status+'</td>'+
+    '<td><a href="https://mail.google.com/mail/u/0/#inbox/'+r.id+'" target="_blank" class="btn btn-outline btn-sm">פתח</a></td>';
+  tb.appendChild(tr);
+}
+function showResults(){
+  setProgress(100,'סריקה הושלמה — '+totalScanned+' מיילים, '+foundCount+' חשבוניות');
+  updateStats();
+  document.getElementById('resultsSection').classList.remove('hidden');
+  if(pdfFiles.length>0){
+    document.getElementById('downloadBanner').classList.remove('hidden');
+    document.getElementById('downloadDesc').textContent='נמצאו '+pdfFiles.length+' קבצים מוכנים להורדה כ-ZIP';
+    log('🎉 '+foundCount+' חשבוניות! '+pdfCount+' PDFs זמינים','success');
+  } else if(foundCount===0){
+    log('לא נמצאו חשבוניות','warn');
+  } else {
+    log('נמצאו '+foundCount+' חשבוניות ללא PDF מצורף','warn');
+  }
+}
+function resetScan(){
+  document.getElementById('progressCard').classList.add('hidden');
+  document.getElementById('resultsSection').classList.add('hidden');
+  document.getElementById('downloadBanner').classList.add('hidden');
+  document.getElementById('logBox').innerHTML='';
+  setProgress(0,'');
+  results=[];pdfFiles=[];
+}
+loadGIS();
+</script>
+</body>
+</html>.btn-google:hover { background: #f8f9fa; }
+.date-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+.field label { display: block; font-size: 11px; font-weight: 700; color: var(--text-dim); margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.6px; }
+.field input { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 7px; padding: 9px 12px; color: var(--text); font-family: 'Heebo', sans-serif; font-size: 13px; outline: none; direction: ltr; transition: border-color 0.2s; }
+.field input:focus { border-color: var(--accent); }
+.alert { padding: 11px 14px; border-radius: 8px; font-size: 12px; margin-bottom: 14px; display: flex; align-items: flex-start; gap: 8px; line-height: 1.5; }
+.alert-info { background: rgba(59,126,248,0.08); border: 1px solid rgba(59,126,248,0.25); color: #93bbfc; }
+.alert-warn { background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.25); color: #fcd34d; }
+.progress-wrap { background: var(--surface2); border-radius: 100px; height: 5px; margin: 12px 0; overflow: hidden; }
+.progress-bar { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); border-radius: 100px; width: 0%; transition: width 0.3s ease; }
+.progress-text { font-size: 12px; color: var(--text-dim); text-align: center; margin-bottom: 6px; }
+.log-box { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 12px; height: 180px; overflow-y: auto; font-size: 11px; font-family: 'Courier New', monospace; direction: ltr; }
+.log-line { padding: 1px 0; color: var(--text-dim); }
+.log-line.info { color: var(--accent); }
+.log-line.success { color: var(--success); }
+.log-line.warn { color: var(--warning); }
+.log-line.error { color: var(--danger); }
+.stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+.stat { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 14px; text-align: center; }
+.stat-num { font-size: 26px; font-weight: 900; background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.stat-label { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+thead th { background: var(--surface2); padding: 10px 12px; text-align: right; font-weight: 700; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); border-bottom: 1px solid var(--border); }
+tbody tr { border-bottom: 1px solid var(--border); transition: background 0.12s; }
+tbody tr:hover { background: var(--surface2); }
+tbody td { padding: 10px 12px; vertical-align: middle; }
+.table-wrap { overflow-x: auto; }
+.badge { display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 100px; font-size: 10px; font-weight: 700; }
+.badge-pdf { background: rgba(59,126,248,0.15); color: var(--accent); }
+.badge-html { background: rgba(108,58,237,0.15); color: #a78bfa; }
+.badge-ok { background: rgba(14,164,114,0.15); color: var(--success); }
+.action-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+.hidden { display: none !important; }
+.download-banner { background: linear-gradient(135deg, rgba(14,164,114,0.12), rgba(59,126,248,0.08)); border: 1px solid rgba(14,164,114,0.3); border-radius: 10px; padding: 18px 22px; display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
+.download-banner .big-icon { font-size: 36px; }
+.download-banner h3 { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+.download-banner p { font-size: 12px; color: var(--text-dim); }
+@media (max-width: 600px) { .date-row { grid-template-columns: 1fr; } .stats-row { grid-template-columns: repeat(2,1fr); } }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">📥</div>
+  <div class="header-title">
+    <h1>מחלץ חשבוניות</h1>
+    <p>הורדת קבצים אוטומטית מ-Gmail</p>
+  </div>
+  <div class="status">
+    <div class="dot" id="statusDot"></div>
+    <span id="statusText">לא מחובר</span>
+  </div>
+</div>
+
+<div class="main">
+
+  <div class="card" id="connectCard">
+    <div class="card-title"><span>🔐</span> חיבור ל-Gmail</div>
+    <div class="alert alert-info">
+      <span>ℹ️</span>
+      <div>האפליקציה מוצאת חשבוניות, מורידה את ה-PDFs לקובץ ZIP, ומעבירה את המיילים לתיקייה "חשבוניות AI" ב-Gmail. לא נשמר מידע על שרת חיצוני.</div>
+    </div>
+    <button class="btn btn-google" onclick="connectGmail()">
+      <svg width="16" height="16" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/><path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957C.347 6.175 0 7.55 0 9s.348 2.825.957 4.039l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.961L3.964 7.293C4.672 5.163 6.656 3.58 9 3.58z"/></svg>
+      התחבר עם Google
+    </button>
+  </div>
+
+  <div id="scanSection" class="hidden">
+    <div class="card">
+      <div class="card-title"><span>📅</span> בחר תקופה לסריקה</div>
+      <div class="date-row">
+        <div class="field"><label>מתאריך</label><input type="date" id="dateFrom"></div>
+        <div class="field"><label>עד תאריך</label><input type="date" id="dateTo"></div>
+      </div>
+      <div class="alert alert-warn">
+        <span>⚠️</span>
+        <div>מומלץ עד 2 חודשים בכל פעם. מיילים שנמצאו יועברו לתיקייה "חשבוניות AI" ב-Gmail אוטומטית.</div>
+      </div>
+      <button class="btn btn-success" id="scanBtn" onclick="startScan()">
+        <span>🔍</span> סרוק והורד חשבוניות
+      </button>
+    </div>
+
+    <div class="card hidden" id="progressCard">
+      <div class="card-title"><span>⚡</span> סריקה בתהליך</div>
+      <div class="progress-text" id="progressText">מתחיל...</div>
+      <div class="progress-wrap"><div class="progress-bar" id="progressBar"></div></div>
+      <div class="log-box" id="logBox"></div>
+    </div>
+
+    <div class="hidden" id="resultsSection">
+      <div class="stats-row">
+        <div class="stat"><div class="stat-num" id="statTotal">0</div><div class="stat-label">נסרקו</div></div>
+        <div class="stat"><div class="stat-num" id="statFound">0</div><div class="stat-label">חשבוניות</div></div>
+        <div class="stat"><div class="stat-num" id="statPdf">0</div><div class="stat-label">PDF הורד</div></div>
+        <div class="stat"><div class="stat-num" id="statLabeled">0</div><div class="stat-label">תויגו</div></div>
+      </div>
+
+      <div class="download-banner hidden" id="downloadBanner">
+        <div class="big-icon">📦</div>
+        <div>
+          <h3>הקבצים מוכנים!</h3>
+          <p id="downloadDesc"></p>
+        </div>
+        <button class="btn btn-success" style="margin-right:auto" onclick="downloadZip()">⬇️ הורד ZIP</button>
+      </div>
+
+      <div class="card">
+        <div class="card-title"><span>📋</span> רשימת חשבוניות</div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>תאריך</th><th>שולח</th><th>נושא</th><th>סוג</th><th>סטטוס</th><th>פעולה</th></tr></thead>
+            <tbody id="resultsTable"></tbody>
+          </table>
+        </div>
+        <div class="action-row">
+          <button class="btn btn-outline" onclick="resetScan()">🔄 סריקה חדשה</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+const CLIENT_ID = '353675408500-js28iveo2pgb34jc8sa5s291gpkgc5c8.apps.googleusercontent.com';
+const SCOPES = 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.labels https://www.googleapis.com/auth/gmail.modify';
+const LABEL_NAME = '\u05d7\u05e9\u05d1\u05d5\u05e0\u05d9\u05d5\u05ea AI';
+
+let tokenClient, accessToken = null, labelId = null;
+let results = [], pdfFiles = [];
+let totalScanned = 0, foundCount = 0, pdfCount = 0, labeledCount = 0;
+
+function loadGIS() {
+  const s = document.createElement('script');
+  s.src = 'https://accounts.google.com/gsi/client';
+  s.onload = initGIS;
+  document.head.appendChild(s);
+}
+function initGIS() {
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID, scope: SCOPES,
+    callback: (resp) => {
+      if (resp.error) { log('שגיאת חיבור: ' + resp.error, 'error'); return; }
+      accessToken = resp.access_token; onConnected();
+    }
+  });
+}
+function connectGmail() {
+  if (!tokenClient) { alert('טוען... נסה שוב'); return; }
+  tokenClient.requestAccessToken();
+}
+function onConnected() {
+  document.getElementById('statusDot').classList.add('on');
+  document.getElementById('statusText').textContent = 'מחובר';
+  document.getElementById('connectCard').classList.add('hidden');
+  document.getElementById('scanSection').classList.remove('hidden');
+  const today = new Date();
+  const lastMonth = new Date(today.getFullYear(), today.getMonth()-1, 1);
+  const endLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
+  document.getElementById('dateFrom').value = lastMonth.toISOString().split('T')[0];
+  document.getElementById('dateTo').value = endLastMonth.toISOString().split('T')[0];
+  log('מחובר ל-Gmail ✅', 'success');
+}
+
+async function gmailGet(path, params={}) {
+  const url = new URL('https://gmail.googleapis.com/gmail/v1/'+path);
+  Object.entries(params).forEach(([k,v])=>url.searchParams.set(k,v));
+  const res = await fetch(url,{headers:{Authorization:'Bearer '+accessToken}});
+  if(!res.ok) throw new Error('Gmail API '+res.status);
+  return res.json();
+}
+async function gmailPost(path, body) {
+  const res = await fetch('https://gmail.googleapis.com/gmail/v1/'+path,{
+    method:'POST', headers:{Authorization:'Bearer '+accessToken,'Content-Type':'application/json'},
+    body:JSON.stringify(body)
+  });
+  if(!res.ok) throw new Error('Gmail API '+res.status);
+  return res.json();
+}
+
+async function getOrCreateLabel() {
+  const data = await gmailGet('users/me/labels');
+  const existing = data.labels.find(l=>l.name===LABEL_NAME);
+  if(existing){labelId=existing.id;return;}
+  const created = await gmailPost('users/me/labels',{name:LABEL_NAME,labelListVisibility:'labelShow',messageListVisibility:'show'});
+  labelId=created.id;
+  log('נוצרה תיקייה "'+LABEL_NAME+'" ב-Gmail','success');
+}
+async function applyLabel(msgId) {
+  await gmailPost('users/me/messages/'+msgId+'/modify',{addLabelIds:[labelId]});
+}
+
+async function startScan() {
+  const dateFrom = document.getElementById('dateFrom').value;
+  const dateTo = document.getElementById('dateTo').value;
+  if(!dateFrom||!dateTo){alert('נא לבחור תאריכים');return;}
+  results=[];pdfFiles=[];
+  totalScanned=foundCount=pdfCount=labeledCount=0;
+  document.getElementById('progressCard').classList.remove('hidden');
+  document.getElementById('resultsSection').classList.add('hidden');
+  document.getElementById('downloadBanner').classList.add('hidden');
+  document.getElementById('scanBtn').disabled=true;
+  document.getElementById('resultsTable').innerHTML='';
+  try {
+    await getOrCreateLabel();
+    await scanEmails(dateFrom,dateTo);
+  } catch(e){log('שגיאה: '+e.message,'error');}
+  finally{document.getElementById('scanBtn').disabled=false;}
+}
+
+async function scanEmails(dateFrom, dateTo) {
+  const fromTs = Math.floor(new Date(dateFrom).getTime()/1000);
+  const toTs = Math.floor(new Date(dateTo+'T23:59:59').getTime()/1000);
+  const query = 'after:'+fromTs+' before:'+toTs;
+  log('מחפש מיילים...','info');
+  let pageToken=null, allIds=[];
+  do {
+    const params={q:query,maxResults:100};
+    if(pageToken) params.pageToken=pageToken;
+    const data = await gmailGet('users/me/messages',params);
+    if(data.messages) allIds=allIds.concat(data.messages.map(m=>m.id));
+    pageToken=data.nextPageToken||null;
+  } while(pageToken);
+
+  if(allIds.length===0){log('לא נמצאו מיילים','warn');showResults();return;}
+  log('נמצאו '+allIds.length+' מיילים. מנתח...','info');
+
+  for(let i=0;i<allIds.length;i++){
+    setProgress(Math.round(((i+1)/allIds.length)*100),'מנתח מייל '+(i+1)+' מתוך '+allIds.length);
+    try{await processEmail(allIds[i]);}catch(e){}
+    totalScanned++;
+    if(i%8===7) await sleep(400);
+  }
+  showResults();
+}
+
+function decodeHeader(str) {
+  if(!str) return '';
+  try {
+    return str.replace(/=\?([^?]+)\?(B|Q)\?([^?]*)\?=/gi,function(m,cs,enc,text){
+      try{
+        if(enc.toUpperCase()==='B') return decodeURIComponent(escape(atob(text)));
+        return decodeURIComponent(text.replace(/_/g,' ').replace(/=([A-Fa-f0-9]{2})/g,(_,h)=>String.fromCharCode(parseInt(h,16))));
+      }catch(e){return text;}
+    });
+  }catch(e){return str;}
+}
+
+async function processEmail(msgId) {
+  const msg = await gmailGet('users/me/messages/'+msgId,{format:'full'});
+  const headers = msg.payload&&msg.payload.headers?msg.payload.headers:[];
+  const subject = decodeHeader(headers.find(h=>h.name==='Subject')?.value||'');
+  const from = decodeHeader(headers.find(h=>h.name==='From')?.value||'');
+  const date = headers.find(h=>h.name==='Date')?.value||'';
+
+  if(!isInvoice(subject,from)) return;
+  foundCount++;
+
+  const attachments = findAttachments(msg.payload);
+  const pdfAtts = attachments.filter(a=>isPDF(a));
+
+  let fileType='HTML', fileName='', fileData=null, hasPdf=false;
+
+  if(pdfAtts.length>0) {
+    const att = pdfAtts[0];
+    hasPdf=true; fileType='PDF';
+    const baseName = sanitize(from,subject,date);
+    fileName = baseName+(att.filename?'_'+att.filename.replace(/[^a-zA-Z0-9.\u0590-\u05FF]/g,'_'):'.pdf');
+    try {
+      const attData = await gmailGet('users/me/messages/'+msgId+'/attachments/'+att.attachmentId);
+      fileData = attData.data.replace(/-/g,'+').replace(/_/g,'/');
+      pdfCount++;
+    } catch(e){fileData=null;}
+  } else {
+    const bodyHtml = getBody(msg.payload);
+    if(bodyHtml){
+      fileData = btoa(unescape(encodeURIComponent(bodyHtml)));
+      fileName = sanitize(from,subject,date)+'.html';
+    }
+  }
+
+  try{await applyLabel(msgId);labeledCount++;}catch(e){}
+
+  const result={id:msgId,date:formatDate(date),from:cleanFrom(from),subject,fileType,fileName,fileData,hasPdf};
+  results.push(result);
+  if(fileData) pdfFiles.push({name:fileName,data:fileData});
+
+  log((hasPdf?'📄 PDF: ':'📧 HTML: ')+subject.substring(0,50),'success');
+  updateStats();
+  addResultRow(result);
+}
+
+function isInvoice(subject, from) {
+  const text=(subject+' '+from).toLowerCase();
+  const kw=['חשבונית','invoice','tax invoice','חשבון עסקה','חשבון לתשלום',
+    'חיוב חודשי','הוראת קבע','חשבון תקופתי','חשבון חודשי','פרטי חיוב',
+    'חשבון לחודש','חשבון מס','עמלות וחיובים','חיובים נוספים','דמי שירות',
+    'דמי מנוי','חיוב שנתי','חיוב חד פעמי','תשלום חודשי','תשלום שנתי',
+    'חשבונית מס','מסמך מס','קבלה','receipt','אישור תשלום','אישור רכישה',
+    'תשלום התקבל','payment received','order confirmation','אישור עסקה','אישור הזמנה'];
   return kw.some(k=>text.includes(k));
 }
 
