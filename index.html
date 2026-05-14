@@ -336,26 +336,7 @@ function isInvoice(subject, from) {
     'דמי מנוי','חיוב שנתי','חיוב חד פעמי','תשלום חודשי','תשלום שנתי',
     'חשבונית מס','מסמך מס','קבלה','receipt','אישור תשלום','אישור רכישה',
     'תשלום התקבל','payment received','order confirmation','אישור עסקה','אישור הזמנה'];
-  if(!kw.some(k=>text.includes(k))) return false;
-
-  // רשימת שולחים/דומיינים שאינם חשבוניות
-  const blacklist = [
-    'github.com', 'github.io', 'noreply@github', 'notifications@github',
-    'render.com', 'noreply@render', 'renderteam',
-    'linkedin.com', 'facebook.com', 'twitter.com', 'instagram.com',
-    'youtube.com', 'google-analytics', 'googlealerts',
-    'calendar-notification', 'calendar.google',
-    'no-reply@accounts.google', 'alerts@google',
-    'medium.com', 'substack.com', 'mailchimp',
-    'deploy', 'deployment', 'build failed', 'build success',
-    'deploy failed', 'deploy succeeded', 'deploy canceled',
-    'ci/cd', 'pipeline', 'vercel.com', 'netlify.com', 'heroku.com',
-    'render.com', '@render.com', 'onrender.com'
-  ];
-  const fullText = (subject + ' ' + from).toLowerCase();
-  if(blacklist.some(b=>fullText.includes(b))) return false;
-
-  return true;
+  return kw.some(k=>text.includes(k));
 }
 
 function findAttachments(payload) {
