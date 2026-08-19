@@ -227,7 +227,11 @@ async function getOrCreateLabel() {
   log('נוצרה תיקייה "'+LABEL_NAME+'" ב-Gmail','success');
 }
 async function applyLabel(msgId) {
-  await gmailPost('users/me/messages/'+msgId+'/modify',{addLabelIds:[labelId]});
+  // הוסף תווית + הסר מתיבה נכנסת (INBOX)
+  await gmailPost('users/me/messages/'+msgId+'/modify',{
+    addLabelIds: [labelId],
+    removeLabelIds: ['INBOX']
+  });
 }
 
 async function startScan() {
