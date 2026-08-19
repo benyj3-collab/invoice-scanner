@@ -146,11 +146,12 @@ tbody td { padding: 10px 12px; vertical-align: middle; }
         <div class="card-title"><span>📋</span> רשימת חשבוניות</div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>תאריך</th><th>שולח</th><th>נושא</th><th>סוג</th><th>סטטוס</th><th>פעולה</th></tr></thead>
+            <thead><tr><th><input type="checkbox" id="selectAll" onclick="toggleAll(this)" title="בחר הכל"></th><th>תאריך</th><th>שולח</th><th>נושא</th><th>סוג</th><th>סטטוס</th><th>פעולה</th></tr></thead>
             <tbody id="resultsTable"></tbody>
           </table>
         </div>
         <div class="action-row">
+          <button class="btn btn-primary" onclick="createMergedPdf()">📄 צור PDF מאוחד מהסומנים</button>
           <button class="btn btn-outline" onclick="resetScan()">🔄 סריקה חדשה</button>
         </div>
       </div>
@@ -159,6 +160,7 @@ tbody td { padding: 10px 12px; vertical-align: middle; }
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <script>
 const CLIENT_ID = '353675408500-js28iveo2pgb34jc8sa5s291gpkgc5c8.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.labels https://www.googleapis.com/auth/gmail.modify';
@@ -312,8 +314,17 @@ async function processEmail(msgId) {
   } else {
     const bodyHtml = getBody(msg.payload);
     if(bodyHtml){
-      fileData = btoa(unescape(encodeURIComponent(bodyHtml)));
-      fileName = sanitize(from,subject,date)+'.html';
+      try {
+        const pdfBytes = await htmlToPdfBytes(bodyHtml);
+        fileData = arrayBufferToBase64(pdfBytes);
+        fileName = sanitize(from,subject,date)+'.pdf';
+        fileType = 'PDF (HTML)';
+        pdfCount++;
+      } catch(e) {
+        // fallback to HTML
+        fileData = btoa(unescape(encodeURIComponent(bodyHtml)));
+        fileName = sanitize(from,subject,date)+'.html';
+      }
     }
   }
 
@@ -336,7 +347,26 @@ function isInvoice(subject, from) {
     'דמי מנוי','חיוב שנתי','חיוב חד פעמי','תשלום חודשי','תשלום שנתי',
     'חשבונית מס','מסמך מס','קבלה','receipt','אישור תשלום','אישור רכישה',
     'תשלום התקבל','payment received','order confirmation','אישור עסקה','אישור הזמנה'];
-  return kw.some(k=>text.includes(k));
+  if(!kw.some(k=>text.includes(k))) return false;
+
+  // רשימת שולחים/דומיינים שאינם חשבוניות
+  const blacklist = [
+    'github.com', 'github.io', 'noreply@github', 'notifications@github',
+    'render.com', 'noreply@render', 'renderteam',
+    'linkedin.com', 'facebook.com', 'twitter.com', 'instagram.com',
+    'youtube.com', 'google-analytics', 'googlealerts',
+    'calendar-notification', 'calendar.google',
+    'no-reply@accounts.google', 'alerts@google',
+    'medium.com', 'substack.com', 'mailchimp',
+    'deploy', 'deployment', 'build failed', 'build success',
+    'deploy failed', 'deploy succeeded', 'deploy canceled',
+    'ci/cd', 'pipeline', 'vercel.com', 'netlify.com', 'heroku.com',
+    'render.com', '@render.com', 'onrender.com'
+  ];
+  const fullText = (subject + ' ' + from).toLowerCase();
+  if(blacklist.some(b=>fullText.includes(b))) return false;
+
+  return true;
 }
 
 function findAttachments(payload) {
@@ -415,9 +445,11 @@ function addResultRow(r){
   updateStats();
   const tb=document.getElementById('resultsTable');
   const tr=document.createElement('tr');
-  const bc=r.fileType==='PDF'?'badge-pdf':'badge-html';
+  const bc=r.fileType==='HTML'?'badge-html':'badge-pdf';
   const status=r.fileData?'<span class="badge badge-ok">✓ הורד</span>':'<span style="color:var(--text-dim);font-size:11px">ללא קובץ</span>';
+  const idx = results.length - 1;
   tr.innerHTML=
+    '<td><input type="checkbox" class="row-check" data-idx="'+idx+'" '+(r.fileData?'checked':'')+' '+(r.fileData?'':'disabled')+'></td>'+
     '<td>'+r.date+'</td>'+
     '<td style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+r.from+'</td>'+
     '<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+r.subject+'</td>'+
@@ -448,6 +480,115 @@ function resetScan(){
   setProgress(0,'');
   results=[];pdfFiles=[];
 }
+function toggleAll(cb) {
+  document.querySelectorAll('.row-check:not(:disabled)').forEach(c => c.checked = cb.checked);
+}
+
+async function createMergedPdf() {
+  const checked = [...document.querySelectorAll('.row-check:checked')];
+  if(checked.length === 0) { alert('לא נבחרו חשבוניות'); return; }
+
+  log('יוצר PDF מאוחד מ-'+checked.length+' חשבוניות...', 'info');
+
+  try {
+    // Load pdf-lib
+    if(!window.PDFLib) {
+      await new Promise((res,rej) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js';
+        s.onload = res; s.onerror = rej;
+        document.head.appendChild(s);
+      });
+    }
+
+    const { PDFDocument } = PDFLib;
+    const merged = await PDFDocument.create();
+
+    for(const cb of checked) {
+      const idx = parseInt(cb.dataset.idx);
+      const file = pdfFiles.find(f => f.name === results[idx].fileName);
+      if(!file) continue;
+
+      try {
+        const b64 = file.data.replace(/\s/g,'');
+        const bin = atob(b64);
+        const bytes = new Uint8Array(bin.length);
+        for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+
+        const pdf = await PDFDocument.load(bytes, { ignoreEncryption: true });
+        const pages = await merged.copyPages(pdf, pdf.getPageIndices());
+        pages.forEach(p => merged.addPage(p));
+        log('✓ נוסף: '+results[idx].subject.substring(0,40), 'success');
+      } catch(e) {
+        log('⚠️ דולג: '+results[idx].subject.substring(0,30), 'warn');
+      }
+    }
+
+    const mergedBytes = await merged.save();
+    const blob = new Blob([mergedBytes], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'חשבוניות_מאוחד_'+new Date().toISOString().split('T')[0]+'.pdf';
+    a.click();
+
+    // Also open for printing
+    window.open(url, '_blank');
+    log('✅ PDF מאוחד נוצר! '+checked.length+' חשבוניות', 'success');
+
+  } catch(e) {
+    log('שגיאה: '+e.message, 'error');
+  }
+}
+
+async function printAll() {
+  if(pdfFiles.length===0){alert('אין קבצים להדפסה');return;}
+  log('פותח קבצים להדפסה...','info');
+  for(const f of pdfFiles){
+    try {
+      const b64=f.data.replace(/\s/g,'');
+      const bin=atob(b64);
+      const bytes=new Uint8Array(bin.length);
+      for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+      const blob=new Blob([bytes],{type:'application/pdf'});
+      const url=URL.createObjectURL(blob);
+      window.open(url,'_blank');
+      await sleep(800);
+    } catch(e) { log('שגיאה: '+f.name,'error'); }
+  }
+  log('✅ '+pdfFiles.length+' קבצים נפתחו — הדפס מכל טאב','success');
+}
+
+async function htmlToPdfBytes(html) {
+  return new Promise((resolve, reject) => {
+    const container = document.createElement('div');
+    container.style.cssText = 'position:fixed;left:-9999px;top:0;width:210mm;background:white;direction:rtl;';
+    container.innerHTML = html;
+    document.body.appendChild(container);
+    const opt = {
+      margin: 10,
+      filename: 'invoice.pdf',
+      image: { type: 'jpeg', quality: 0.95 },
+      html2canvas: { scale: 1.5, useCORS: true, logging: false },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    };
+    html2pdf().set(opt).from(container).outputPdf('arraybuffer').then(buf => {
+      document.body.removeChild(container);
+      resolve(buf);
+    }).catch(e => {
+      try { document.body.removeChild(container); } catch(_) {}
+      reject(e);
+    });
+  });
+}
+
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
 loadGIS();
 </script>
 </body>
