@@ -255,7 +255,8 @@ async function startScan() {
 async function scanEmails(dateFrom, dateTo) {
   const fromTs = Math.floor(new Date(dateFrom).getTime()/1000);
   const toTs = Math.floor(new Date(dateTo+'T23:59:59').getTime()/1000);
-  const query = 'after:'+fromTs+' before:'+toTs;
+  // חפש בתיבה נכנסת וגם בתיקיית חשבוניות AI
+  const query = 'after:'+fromTs+' before:'+toTs+' {in:inbox label:חשבוניות-AI}';
   log('מחפש מיילים...','info');
   let pageToken=null, allIds=[];
   do {
