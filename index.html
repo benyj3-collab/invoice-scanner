@@ -142,6 +142,22 @@ tbody td { padding: 10px 12px; vertical-align: middle; }
         <button class="btn btn-success" style="margin-right:auto" onclick="downloadZip()">⬇️ הורד ZIP</button>
       </div>
 
+      <!-- Manual upload section -->
+      <div class="card hidden" id="manualCard" style="border-color:rgba(245,158,11,0.4)">
+        <div class="card-title"><span>⚠️</span> חשבוניות לטיפול ידני</div>
+        <div class="alert alert-warn" style="margin-bottom:12px">
+          <span>ℹ️</span>
+          <div>החשבוניות הבאות הגיעו עם קישור בלבד. לחץ "פתח מייל", הורד את ה-PDF ידנית, ואז העלה אותו כאן.</div>
+        </div>
+        <div id="manualList" style="margin-bottom:14px"></div>
+        <div style="border:2px dashed var(--border);border-radius:8px;padding:18px;text-align:center;cursor:pointer" onclick="document.getElementById('manualUpload').click()">
+          <div style="font-size:28px;margin-bottom:6px">📁</div>
+          <div style="font-size:13px;color:var(--text-dim)">גרור PDF לכאן או לחץ להעלאה</div>
+          <input type="file" id="manualUpload" accept=".pdf" multiple style="display:none" onchange="handleManualUpload(this)">
+        </div>
+        <div id="manualUploaded" style="margin-top:12px"></div>
+      </div>
+
       <div class="card">
         <div class="card-title"><span>📋</span> רשימת חשבוניות</div>
         <div class="table-wrap">
@@ -238,7 +254,10 @@ async function startScan() {
   const dateFrom = document.getElementById('dateFrom').value;
   const dateTo = document.getElementById('dateTo').value;
   if(!dateFrom||!dateTo){alert('נא לבחור תאריכים');return;}
-  results=[];pdfFiles=[];
+  results=[];pdfFiles=[];manualFiles=[];
+  const ml=document.getElementById('manualList'); if(ml) ml.innerHTML='';
+  const mu=document.getElementById('manualUploaded'); if(mu) mu.innerHTML='';
+  const mc=document.getElementById('manualCard'); if(mc) mc.classList.add('hidden');
   totalScanned=foundCount=pdfCount=labeledCount=0;
   document.getElementById('progressCard').classList.remove('hidden');
   document.getElementById('resultsSection').classList.add('hidden');
@@ -317,20 +336,10 @@ async function processEmail(msgId) {
       pdfCount++;
     } catch(e){fileData=null;}
   } else {
-    const bodyHtml = getBody(msg.payload);
-    if(bodyHtml){
-      try {
-        const pdfBytes = await htmlToPdfBytes(bodyHtml);
-        fileData = arrayBufferToBase64(pdfBytes);
-        fileName = sanitize(from,subject,date)+'.pdf';
-        fileType = 'PDF (HTML)';
-        pdfCount++;
-      } catch(e) {
-        // fallback to HTML
-        fileData = btoa(unescape(encodeURIComponent(bodyHtml)));
-        fileName = sanitize(from,subject,date)+'.html';
-      }
-    }
+    // No PDF attachment - add to manual list
+    fileType = 'קישור';
+    fileData = null;
+    addManualRow(msgId, cleanFrom(from), subject, formatDate(date));
   }
 
   try{await applyLabel(msgId);labeledCount++;}catch(e){}
@@ -544,6 +553,47 @@ async function createMergedPdf() {
   } catch(e) {
     log('שגיאה: '+e.message, 'error');
   }
+}
+
+let manualFiles = [];
+
+function addManualRow(msgId, from, subject, date) {
+  const list = document.getElementById('manualList');
+  if(!list) return;
+  document.getElementById('manualCard').classList.remove('hidden');
+  const div = document.createElement('div');
+  div.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px;background:var(--surface2);border-radius:8px;margin-bottom:8px;';
+  div.innerHTML =
+    '<div style="flex:1;min-width:0">' +
+    '<div style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+subject+'</div>' +
+    '<div style="font-size:11px;color:var(--text-dim)">'+from+' · '+date+'</div>' +
+    '</div>' +
+    '<a href="https://mail.google.com/mail/u/0/#inbox/'+msgId+'" target="_blank" class="btn btn-outline btn-sm">📧 פתח מייל</a>';
+  list.appendChild(div);
+}
+
+function handleManualUpload(input) {
+  const uploaded = document.getElementById('manualUploaded');
+  Array.from(input.files).forEach(file => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const b64 = e.target.result.split(',')[1];
+      manualFiles.push({ name: file.name, data: b64 });
+      pdfFiles.push({ name: file.name, data: b64 });
+
+      const div = document.createElement('div');
+      div.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 12px;background:rgba(14,164,114,0.1);border:1px solid rgba(14,164,114,0.3);border-radius:8px;margin-bottom:6px;font-size:12px;';
+      div.innerHTML = '<span>✅</span><span style="flex:1">'+file.name+'</span><span style="color:var(--success)">הועלה</span>';
+      uploaded.appendChild(div);
+
+      // Update download banner
+      document.getElementById('downloadBanner').classList.remove('hidden');
+      document.getElementById('downloadDesc').textContent = 'נמצאו '+pdfFiles.length+' קבצים מוכנים להורדה כ-ZIP';
+      log('📎 הועלה ידנית: '+file.name, 'success');
+    };
+    reader.readAsDataURL(file);
+  });
+  input.value = '';
 }
 
 async function printAll() {
