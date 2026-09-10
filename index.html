@@ -130,7 +130,7 @@ tbody td { padding: 10px 12px; vertical-align: middle; }
         <div class="stat"><div class="stat-num" id="statTotal">0</div><div class="stat-label">נסרקו</div></div>
         <div class="stat"><div class="stat-num" id="statFound">0</div><div class="stat-label">חשבוניות</div></div>
         <div class="stat"><div class="stat-num" id="statPdf">0</div><div class="stat-label">PDF הורד</div></div>
-        <div class="stat"><div class="stat-num" id="statLabeled">0</div><div class="stat-label">תויגו</div></div>
+        <div class="stat"><div class="stat-num" id="statManual">0</div><div class="stat-label">לטיפול ידני</div></div>
       </div>
 
       <div class="download-banner hidden" id="downloadBanner">
@@ -144,15 +144,16 @@ tbody td { padding: 10px 12px; vertical-align: middle; }
 
       <!-- Manual upload section -->
       <div class="card hidden" id="manualCard" style="border-color:rgba(245,158,11,0.4)">
-        <div class="card-title"><span>⚠️</span> חשבוניות לטיפול ידני</div>
+        <div class="card-title"><span>⚠️</span> חשבוניות לטיפול ידני — <span id="manualCountLabel" style="color:var(--warning)">0 חשבוניות</span></div>
         <div class="alert alert-warn" style="margin-bottom:12px">
           <span>ℹ️</span>
-          <div>החשבוניות הבאות הגיעו עם קישור בלבד. לחץ "פתח מייל", הורד את ה-PDF ידנית, ואז העלה אותו כאן.</div>
+          <div>החשבוניות הבאות הגיעו עם קישור בלבד (ללא PDF מצורף). לכל אחת: לחץ <strong>פתח מייל</strong> ← הורד PDF מאתר הספק ← העלה אותו כאן. לבסוף לחץ <strong>צור PDF מאוחד</strong> שיכלול את הכל.</div>
         </div>
         <div id="manualList" style="margin-bottom:14px"></div>
-        <div style="border:2px dashed var(--border);border-radius:8px;padding:18px;text-align:center;cursor:pointer" onclick="document.getElementById('manualUpload').click()">
-          <div style="font-size:28px;margin-bottom:6px">📁</div>
-          <div style="font-size:13px;color:var(--text-dim)">גרור PDF לכאן או לחץ להעלאה</div>
+        <div style="border:2px dashed var(--border);border-radius:8px;padding:22px;text-align:center;cursor:pointer;transition:background 0.2s" onmouseenter="this.style.background='var(--surface2)'" onmouseleave="this.style.background=''" onclick="document.getElementById('manualUpload').click()">
+          <div style="font-size:32px;margin-bottom:8px">📁</div>
+          <div style="font-size:13px;font-weight:600;margin-bottom:4px">גרור PDF לכאן או לחץ להעלאה</div>
+          <div style="font-size:11px;color:var(--text-dim)">ניתן להעלות מספר קבצים בבת אחת</div>
           <input type="file" id="manualUpload" accept=".pdf" multiple style="display:none" onchange="handleManualUpload(this)">
         </div>
         <div id="manualUploaded" style="margin-top:12px"></div>
@@ -167,7 +168,8 @@ tbody td { padding: 10px 12px; vertical-align: middle; }
           </table>
         </div>
         <div class="action-row">
-          <button class="btn btn-primary" onclick="createMergedPdf()">📄 צור PDF מאוחד מהסומנים</button>
+          <button class="btn btn-success" onclick="createMergedPdfAll()" id="mergeAllBtn" title="מאחד אוטומטי + ידני — הכל ביחד">🖨️ צור PDF מאוחד מהכל</button>
+          <button class="btn btn-primary" onclick="createMergedPdf()">📄 צור PDF מהסומנים בלבד</button>
           <button class="btn btn-outline" onclick="resetScan()">🔄 סריקה חדשה</button>
         </div>
       </div>
@@ -184,7 +186,7 @@ const LABEL_NAME = '\u05d7\u05e9\u05d1\u05d5\u05e0\u05d9\u05d5\u05ea AI';
 
 let tokenClient, accessToken = null, labelId = null;
 let results = [], pdfFiles = [];
-let totalScanned = 0, foundCount = 0, pdfCount = 0, labeledCount = 0;
+let totalScanned = 0, foundCount = 0, pdfCount = 0, labeledCount = 0, manualCount = 0;
 
 function loadGIS() {
   const s = document.createElement('script');
@@ -258,7 +260,7 @@ async function startScan() {
   const ml=document.getElementById('manualList'); if(ml) ml.innerHTML='';
   const mu=document.getElementById('manualUploaded'); if(mu) mu.innerHTML='';
   const mc=document.getElementById('manualCard'); if(mc) mc.classList.add('hidden');
-  totalScanned=foundCount=pdfCount=labeledCount=0;
+  totalScanned=foundCount=pdfCount=labeledCount=manualCount=0;
   document.getElementById('progressCard').classList.remove('hidden');
   document.getElementById('resultsSection').classList.add('hidden');
   document.getElementById('downloadBanner').classList.add('hidden');
@@ -336,10 +338,13 @@ async function processEmail(msgId) {
       pdfCount++;
     } catch(e){fileData=null;}
   } else {
-    // No PDF attachment - add to manual list
+    // No PDF attachment - show as manual only, do NOT save HTML
     fileType = 'קישור';
     fileData = null;
+    fileName = '';
+    manualCount++;
     addManualRow(msgId, cleanFrom(from), subject, formatDate(date));
+    log('🔗 קישור (ידני): '+subject.substring(0,50),'warn');
   }
 
   try{await applyLabel(msgId);labeledCount++;}catch(e){}
@@ -348,7 +353,7 @@ async function processEmail(msgId) {
   results.push(result);
   if(fileData) pdfFiles.push({name:fileName,data:fileData});
 
-  log((hasPdf?'📄 PDF: ':'📧 HTML: ')+subject.substring(0,50),'success');
+  if(hasPdf) log('📄 PDF: '+subject.substring(0,50),'success');
   updateStats();
   addResultRow(result);
 }
@@ -452,14 +457,14 @@ function updateStats(){
   document.getElementById('statTotal').textContent=totalScanned;
   document.getElementById('statFound').textContent=foundCount;
   document.getElementById('statPdf').textContent=pdfCount;
-  document.getElementById('statLabeled').textContent=labeledCount;
+  document.getElementById('statManual').textContent=manualCount;
 }
 function addResultRow(r){
   document.getElementById('resultsSection').classList.remove('hidden');
   updateStats();
   const tb=document.getElementById('resultsTable');
   const tr=document.createElement('tr');
-  const bc=r.fileType==='HTML'?'badge-html':'badge-pdf';
+  const bc=r.fileType==='PDF'?'badge-pdf':r.fileType==='קישור'?'badge-html':'badge-html';
   const status=r.fileData?'<span class="badge badge-ok">✓ הורד</span>':'<span style="color:var(--text-dim);font-size:11px">ללא קובץ</span>';
   const idx = results.length - 1;
   tr.innerHTML=
@@ -498,6 +503,68 @@ function toggleAll(cb) {
   document.querySelectorAll('.row-check:not(:disabled)').forEach(c => c.checked = cb.checked);
 }
 
+// מאחד את כל ה-PDFs — אוטומטי + ידני — ללא צורך בסימון
+async function createMergedPdfAll() {
+  if(pdfFiles.length === 0) { alert('אין קבצי PDF. הורד חשבוניות קודם או העלה ידנית.'); return; }
+
+  log('יוצר PDF מאוחד מכל '+pdfFiles.length+' קבצים (אוטומטי + ידני)...', 'info');
+
+  try {
+    if(!window.PDFLib) {
+      await new Promise((res,rej) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js';
+        s.onload = res; s.onerror = rej;
+        document.head.appendChild(s);
+      });
+    }
+
+    const { PDFDocument } = PDFLib;
+    const merged = await PDFDocument.create();
+    let added = 0, skipped = 0;
+
+    for(const file of pdfFiles) {
+      try {
+        const b64 = file.data.replace(/\s/g,'');
+        // בדיקה שזה אכן PDF ולא HTML ריק
+        const header = atob(b64.substring(0, 8));
+        if(!header.startsWith('%PDF')) { skipped++; continue; }
+
+        const bin = atob(b64);
+        const bytes = new Uint8Array(bin.length);
+        for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+
+        const pdf = await PDFDocument.load(bytes, { ignoreEncryption: true });
+        if(pdf.getPageCount() === 0) { skipped++; continue; } // PDF ריק — דלג
+
+        const pages = await merged.copyPages(pdf, pdf.getPageIndices());
+        pages.forEach(p => merged.addPage(p));
+        added++;
+        log('✓ '+file.name.substring(0,45), 'success');
+      } catch(e) {
+        skipped++;
+        log('⚠️ דולג (לא PDF תקין): '+file.name.substring(0,40), 'warn');
+      }
+    }
+
+    if(added === 0) { log('לא נמצאו PDFs תקינים לאיחוד', 'error'); return; }
+
+    const mergedBytes = await merged.save();
+    const blob = new Blob([mergedBytes], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'חשבוניות_מאוחד_'+new Date().toISOString().split('T')[0]+'.pdf';
+    a.click();
+    setTimeout(() => window.open(url, '_blank'), 500);
+
+    log('✅ PDF מאוחד נוצר! '+added+' חשבוניות'+(skipped>0?' ('+skipped+' דולגו)':''), 'success');
+
+  } catch(e) {
+    log('שגיאה: '+e.message, 'error');
+  }
+}
+
 async function createMergedPdf() {
   const checked = [...document.querySelectorAll('.row-check:checked')];
   if(checked.length === 0) { alert('לא נבחרו חשבוניות'); return; }
@@ -525,11 +592,17 @@ async function createMergedPdf() {
 
       try {
         const b64 = file.data.replace(/\s/g,'');
+        // בדוק שזה PDF אמיתי ולא HTML
+        const header = atob(b64.substring(0, 8));
+        if(!header.startsWith('%PDF')) { log('⚠️ דולג (לא PDF): '+results[idx].subject.substring(0,30),'warn'); continue; }
+
         const bin = atob(b64);
         const bytes = new Uint8Array(bin.length);
         for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
 
         const pdf = await PDFDocument.load(bytes, { ignoreEncryption: true });
+        if(pdf.getPageCount() === 0) { log('⚠️ דולג (PDF ריק): '+results[idx].subject.substring(0,30),'warn'); continue; }
+
         const pages = await merged.copyPages(pdf, pdf.getPageIndices());
         pages.forEach(p => merged.addPage(p));
         log('✓ נוסף: '+results[idx].subject.substring(0,40), 'success');
@@ -560,15 +633,20 @@ let manualFiles = [];
 function addManualRow(msgId, from, subject, date) {
   const list = document.getElementById('manualList');
   if(!list) return;
-  document.getElementById('manualCard').classList.remove('hidden');
+  const card = document.getElementById('manualCard');
+  card.classList.remove('hidden');
+  // Update counter label
+  const lbl = document.getElementById('manualCountLabel');
+  if(lbl) lbl.textContent = manualCount + ' חשבוניות';
   const div = document.createElement('div');
-  div.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px;background:var(--surface2);border-radius:8px;margin-bottom:8px;';
+  div.style.cssText = 'display:flex;align-items:center;gap:10px;padding:12px;background:var(--surface2);border:1px solid rgba(245,158,11,0.2);border-radius:8px;margin-bottom:8px;';
   div.innerHTML =
+    '<span style="font-size:18px">🔗</span>' +
     '<div style="flex:1;min-width:0">' +
-    '<div style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+subject+'</div>' +
-    '<div style="font-size:11px;color:var(--text-dim)">'+from+' · '+date+'</div>' +
+    '<div style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+subject+'">'+subject+'</div>' +
+    '<div style="font-size:11px;color:var(--text-dim);margin-top:2px">'+from+' · '+date+'</div>' +
     '</div>' +
-    '<a href="https://mail.google.com/mail/u/0/#inbox/'+msgId+'" target="_blank" class="btn btn-outline btn-sm">📧 פתח מייל</a>';
+    '<a href="https://mail.google.com/mail/u/0/#all/'+msgId+'" target="_blank" class="btn btn-outline btn-sm">📧 פתח מייל</a>';
   list.appendChild(div);
 }
 
